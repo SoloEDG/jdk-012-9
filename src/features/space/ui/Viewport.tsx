@@ -5,10 +5,12 @@ import { buildScene, disposeScene } from "../lib/buildScene";
 export function Viewport({
   position,
   yaw,
+  sculptureRef,
   onSelect,
 }: {
   position: React.RefObject<Point>;
   yaw: React.RefObject<number>;
+  sculptureRef?: React.RefObject<number>;
   onSelect: (id: string) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -24,6 +26,13 @@ export function Viewport({
       setError("当前设备无法启动三维画面，可继续通过作品列表参观。");
       return;
     }
+    // 浏览器回收三维上下文（通常因导出等场景占满显存）时给出明确反馈，
+    // 导出任务自身的离屏上下文丢失由导出模块单独处理
+    const onContextLost = (e: Event) => {
+      e.preventDefault();
+      setError("三维上下文已被浏览器回收，刷新页面即可恢复参观；已完成的收藏与注记不受影响。");
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     el.appendChild(renderer.domElement);
@@ -78,6 +87,7 @@ export function Viewport({
       camera.position.set(position.current.x, 1.7, position.current.z);
       camera.rotation.set(-0.03, yaw.current, 0);
       sculpture.rotation.y = now * 0.00015;
+      if (sculptureRef) sculptureRef.current = sculpture.rotation.y;
       renderer.render(scene, camera);
       frame = requestAnimationFrame(tick);
     };
@@ -85,11 +95,15 @@ export function Viewport({
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      renderer.domElement.removeEventListener(
+        "webglcontextlost",
+        onContextLost,
+      );
       disposeScene(scene);
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [position, yaw]);
+  }, [position, yaw, sculptureRef]);
   return (
     <div className="viewport" ref={root}>
       {error && <div className="webgl-error">{error}</div>}

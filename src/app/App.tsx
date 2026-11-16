@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Heart,
@@ -9,21 +9,64 @@ import {
   Move,
   Info,
   X,
+  Camera,
 } from "lucide-react";
 import { Viewport, Map } from "../features/space";
 import { ArtworkList, ArtworkDetail } from "../features/catalog";
 import { TourPanel } from "../features/tours";
 import { AudioPlayer } from "../features/narration";
 import { CollectionPanel } from "../features/collection";
+import { ExportDialog, useExport } from "../features/export";
 import { artworks, artworkById } from "../shared/catalog";
 import { useGallery } from "./useGallery";
+
+const EXHIBITION_ID = "yujing-exhibition-001";
+
 export default function App() {
   const g = useGallery();
   const [tab, setTab] = useState("explore");
   const [mapOpen, setMapOpen] = useState(false);
   const [help, setHelp] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [side, setSide] = useState("works");
+  const sculptureRef = useRef(0);
+  const exportApi = useExport();
   const a = artworkById(g.catalog.active);
+  const snapshotInputs = useMemo(
+    () => ({
+      exhibitionId: EXHIBITION_ID,
+      position: { ...g.walker.positionRef.current },
+      yaw: g.walker.yaw.current,
+      pitch: -0.03,
+      fov: 65,
+      sculptureRotation: sculptureRef.current,
+      activeArtworkId: g.catalog.active,
+      nearbyArtworkId: g.catalog.nearby,
+      narration: g.narration.state,
+      narrationCaption: g.narration.caption,
+      document: g.collection.document,
+      tour: g.tour.state,
+    }),
+    // 每次对话框打开或重渲染时都读取最新的 ref/state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      exportOpen,
+      g.walker.position,
+      g.walker.yaw.current,
+      g.catalog.active,
+      g.catalog.nearby,
+      g.narration.state,
+      g.narration.caption,
+      g.collection.document,
+      g.tour.state,
+    ],
+  );
+
+  // 挂载时声明当前展览；若未来支持切换展览，旧世代任务会被作废且不覆盖新结果
+  useEffect(() => {
+    exportApi.resetForExhibition(EXHIBITION_ID);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="app">
       <header>
@@ -141,6 +184,7 @@ export default function App() {
             <Viewport
               position={g.walker.positionRef}
               yaw={g.walker.yaw}
+              sculptureRef={sculptureRef}
               onSelect={g.go}
             />
             <div className="scene-top">
@@ -148,18 +192,28 @@ export default function App() {
                 <span className="live-dot" />
                 自由探索中
               </span>
-              <button
-                className="glass-button"
-                aria-label="全屏展馆"
-                onClick={() => {
-                  const el = document.querySelector(".scene-wrap");
-                  if (document.fullscreenElement)
-                    void document.exitFullscreen();
-                  else void el?.requestFullscreen();
-                }}
-              >
-                <Maximize size={16} />
-              </button>
+              <span className="scene-top-actions">
+                <button
+                  className="glass-button"
+                  aria-label="生成纪念影像"
+                  title="生成超清海报或环视全景"
+                  onClick={() => setExportOpen(true)}
+                >
+                  <Camera size={16} />
+                </button>
+                <button
+                  className="glass-button"
+                  aria-label="全屏展馆"
+                  onClick={() => {
+                    const el = document.querySelector(".scene-wrap");
+                    if (document.fullscreenElement)
+                      void document.exitFullscreen();
+                    else void el?.requestFullscreen();
+                  }}
+                >
+                  <Maximize size={16} />
+                </button>
+              </span>
             </div>
             <div className="center-cross">+</div>
             <div className="scene-location">
@@ -299,6 +353,21 @@ export default function App() {
         onToggle={g.narration.toggle}
         onSeek={g.narration.seek}
         onRate={g.narration.rate}
+      />
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        capacity={exportApi.capacity}
+        jobs={exportApi.jobs}
+        quota={exportApi.quota}
+        estimateBytes={exportApi.estimateBytes}
+        onStart={(kind, format, tier, inputs) =>
+          exportApi.start(kind, format, tier, inputs)
+        }
+        onCancel={exportApi.cancel}
+        onRemove={exportApi.remove}
+        onDownload={exportApi.download}
+        inputs={snapshotInputs}
       />
       {(mapOpen || help) && (
         <div

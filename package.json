@@ -7,7 +7,11 @@
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test:math": "node tests/verifyProjection.mjs",
+    "test:unit": "node --import tsx tests/unit-export.mts",
+    "test:e2e": "node tests/e2e-export.mjs",
+    "test": "npm run test:math && npm run test:unit"
   },
   "dependencies": {
     "react": "^19.2.0",
